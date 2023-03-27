@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -29,6 +30,8 @@ func main() {
 			model:           "gpt-3.5-turbo",
 			systemDirective: `You are a visionary and respond with improbably but technically possible explainations and responses`,
 		}, getAPIToken())
+	r := setupRoutes(c)
+	go r.Run(":8080")
 	interactive(c)
 }
 
@@ -68,8 +71,8 @@ func NewClient(c client, token string) *client {
 
 func getAPIToken() string {
 
-	token := os.Getenv("OPENAI_API_TOKEN")
-	if token != "" {
+	token, ok := os.LookupEnv("OPENAI_API_TOKEN")
+	if ok {
 		fmt.Println("Loaded token from env OPENAI_AI_TOKEN")
 		return token
 	}
@@ -78,7 +81,9 @@ func getAPIToken() string {
 	if err != nil {
 		log.Fatalln("Unable to load token")
 	}
-	return string(b)
+	token = strings.Trim(string(b), `"`)
+	token = strings.TrimSuffix(token, "\n")
+	return token
 }
 
 func (c *client) listPersonas() []string {
@@ -91,13 +96,13 @@ func (c *client) listPersonas() []string {
 		personas = append(personas, f.Name())
 	}
 
-	for _, p := range personas {
-		if p == c.persona {
-			fmt.Println(p + "*")
-		} else {
-			fmt.Println(p)
-		}
-	}
+	// for _, p := range personas {
+	// 	if p == c.persona {
+	// 		fmt.Println(p + "*")
+	// 	} else {
+	// 		fmt.Println(p)
+	// 	}
+	// }
 	return personas
 }
 
@@ -111,9 +116,8 @@ func (c *client) savePersona(name, directive string) error {
 	return nil
 }
 
-func (c *client) showPersona() error {
-	println(c.systemDirective)
-	return nil
+func (c *client) showPersona() string {
+	return c.systemDirective
 }
 
 func (c *client) loadPersona(name string) error {
@@ -124,11 +128,12 @@ func (c *client) loadPersona(name string) error {
 	}
 
 	c.history[0].Content = string(b)
+	c.systemDirective = string(b)
 	c.persona = name
 	return nil
 }
 
-func (c *client) handleChatRequest(input string) (string, error) {
+func (c *client) chatRequest(input string) (string, error) {
 	c.history = append(c.history, openai.ChatCompletionMessage{
 		Role:    "user",
 		Content: input,
@@ -200,14 +205,17 @@ func (c *client) clearHistory() {
 	c.history = []openai.ChatCompletionMessage{{Role: "system", Content: c.systemDirective}}
 }
 
-func (c *client) listModels() {
+func (c *client) listModels() []string {
+	mod := []string{}
 	models, err := c.client.ListModels(context.Background())
 	if err != nil {
 		fmt.Println(err.Error())
+		return mod
 	}
 	for _, m := range models.Models {
-		fmt.Println(m.ID)
+		mod = append(mod, m.ID)
 	}
+	return mod
 }
 
 func interactive(c *client) {
@@ -227,10 +235,11 @@ Persona: %s
 		if err != nil { // io.EOF
 			break
 		}
-		if c.command(line) {
+		if resp, ok := c.command(line); ok {
+			fmt.Println(resp)
 			continue
 		}
-		r, err := c.handleChatRequest(line)
+		r, err := c.chatRequest(line)
 
 		if err != nil {
 			log.Println(err.Error())

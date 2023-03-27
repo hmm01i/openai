@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-func (c *client) command(input string) bool {
+func (c *client) command(input string) (string, bool) {
 	if !strings.HasPrefix(input, "/") {
-		return false
+		return "", false
 	}
 	inputSlice := strings.Split(input, " ")
 	var cmd string
@@ -19,56 +19,63 @@ func (c *client) command(input string) bool {
 	}
 
 	if _, ok := cmds[cmd]; ok {
-		cmds[cmd](c, args)
-		return true
+		return cmds[cmd](c, args), true
 	}
 	switch cmd {
 
 	case "/listcmd":
-		func(c *client, args []string) {
+		commands := []string{}
+		return func(c *client, args []string) string {
 			for o, _ := range cmds {
-				fmt.Println(o)
+				commands = append(commands, o)
 			}
-		}(c, args)
-	default:
-
-		fmt.Println("Unrecognized command")
+			return strings.Join(commands, "\n")
+		}(c, args), true
 	}
-	return true
+	return "Unrecognized command", true
 }
 
-var cmds = map[string]func(c *client, args []string){
-	"/listper": func(c *client, args []string) {
+var cmds = map[string]func(c *client, args []string) string{
+	"/listper": func(c *client, args []string) string {
 		personas := c.listPersonas()
-		for _, p := range personas {
+		for i, p := range personas {
 			if p == c.persona {
-				fmt.Println(p + "*")
-			} else {
-				fmt.Println(p)
+				personas[i] = p + "*"
 			}
 		}
+		return strings.Join(personas, "\n")
 	},
-	"/saveper": func(c *client, args []string) { c.savePersona(args[0], c.systemDirective) },
-	"/showper": func(c *client, args []string) { c.showPersona() },
-	"/loadper": func(c *client, args []string) {
+	"/saveper": func(c *client, args []string) string { c.savePersona(args[0], c.systemDirective); return "ok" },
+	"/showper": func(c *client, args []string) string { persona := c.showPersona(); return persona },
+	"/loadper": func(c *client, args []string) string {
 		if len(args) < 1 {
-			fmt.Println(`ERR: No persona provided. Usage: /loadper <persona>`)
-			return
+			return `ERR: No persona provided. Usage: /loadper <persona>`
 		}
-		c.loadPersona(args[0])
+		if err := c.loadPersona(args[0]); err != nil {
+			return "failed to load persona"
+		}
+		return "ok"
 	},
-	"/setdir": func(c *client, args []string) {
-		c.setDirective(strings.Trim(strings.Join(args, " "), `"`))
+	"/setdir": func(c *client, args []string) string {
+		if err := c.setDirective(strings.Trim(strings.Join(args, " "), `"`)); err != nil {
+			return "failed to set directive"
+		}
+		return "ok"
 	},
-	"/hist": func(c *client, args []string) {
+	"/hist": func(c *client, args []string) string {
+		var hist []string
 		for _, m := range c.history {
-			fmt.Printf("%s: %s\n", m.Role, m.Content)
+			hist = append(hist, fmt.Sprintf("%s: %s\n", m.Role, m.Content))
 		}
+		return strings.Join(hist, "\n")
 	},
-	"/clearhist": func(c *client, args []string) { c.clearHistory() },
-	"/listmod":   func(c *client, args []string) { c.listModels() },
-	"/q":         func(c *client, args []string) { os.Exit(0) },
-	"/saveconv":  func(c *client, args []string) { c.saveConversation(args[0]) },
-	"/listconv":  func(c *client, args []string) { c.listConversations() },
-	"/loadconv":  func(c *client, args []string) { c.loadConversation(args[0]) },
+	"/clearhist": func(c *client, args []string) string { c.clearHistory(); return "ok" },
+	"/listmod":   func(c *client, args []string) string { mod := c.listModels(); return strings.Join(mod, "\n") },
+	"/q":         func(c *client, args []string) string { os.Exit(0); return "ok" },
+	"/saveconv":  func(c *client, args []string) string { c.saveConversation(args[0]); return "ok" },
+	"/listconv": func(c *client, args []string) string {
+		convos := c.listConversations()
+		return strings.Join(convos, "\n")
+	},
+	"/loadconv": func(c *client, args []string) string { c.loadConversation(args[0]); return "ok" },
 }
