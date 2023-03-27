@@ -13,32 +13,35 @@ import (
 	"github.com/chzyer/readline"
 )
 
-var (
-	configDir       = "openai"
+type config struct {
+	configDir       string
 	personasDir     string
 	conversationDir string
-)
+	apiTokenFile    string
+}
+
+var conf config
 
 func main() {
-	initConfigs()
-	token := os.Getenv("OPENAI_API_TOKEN")
+	conf.initConfigs()
 	c := NewClient(
 		client{
 			model:           "gpt-3.5-turbo",
 			systemDirective: `You are a visionary and respond with improbably but technically possible explainations and responses`,
-		}, token)
+		}, getAPIToken())
 	interactive(c)
 }
 
-func initConfigs() {
+func (c *config) initConfigs() {
 
 	home, _ := os.UserHomeDir()
-	configDir = path.Join(home, ".openai")
-	personasDir = path.Join(configDir, "personas")
-	conversationDir = path.Join(configDir, "conversations")
-	for _, i := range []string{configDir, personasDir, conversationDir} {
+	c.configDir = path.Join(home, ".openai")
+	c.personasDir = path.Join(c.configDir, "personas")
+	c.conversationDir = path.Join(c.configDir, "conversations")
+	c.apiTokenFile = path.Join(c.configDir, "token")
+	for _, i := range []string{c.configDir, c.personasDir, c.conversationDir} {
 		if _, err := os.ReadDir(i); err != nil {
-			os.Mkdir(configDir, 0755)
+			os.MkdirAll(i, 0755)
 		}
 	}
 }
@@ -52,6 +55,7 @@ type client struct {
 }
 
 func NewClient(c client, token string) *client {
+
 	return &client{
 		model:  c.model,
 		client: openai.NewClient(token),
@@ -62,9 +66,24 @@ func NewClient(c client, token string) *client {
 			}}}
 }
 
+func getAPIToken() string {
+
+	token := os.Getenv("OPENAI_API_TOKEN")
+	if token != "" {
+		fmt.Println("Loaded token from env OPENAI_AI_TOKEN")
+		return token
+	}
+
+	b, err := os.ReadFile(conf.apiTokenFile)
+	if err != nil {
+		log.Fatalln("Unable to load token")
+	}
+	return string(b)
+}
+
 func (c *client) listPersonas() []string {
 	personas := []string{}
-	files, err := os.ReadDir(personasDir)
+	files, err := os.ReadDir(conf.personasDir)
 	if err != nil {
 		log.Printf("error getting personas: %s", err.Error())
 	}
@@ -83,7 +102,7 @@ func (c *client) listPersonas() []string {
 }
 
 func (c *client) savePersona(name, directive string) error {
-	file := path.Join(personasDir, name)
+	file := path.Join(conf.personasDir, name)
 	err := os.WriteFile(file, []byte(directive), 0644)
 	if err != nil {
 		return err
@@ -98,7 +117,7 @@ func (c *client) showPersona() error {
 }
 
 func (c *client) loadPersona(name string) error {
-	file := path.Join(personasDir, name)
+	file := path.Join(conf.personasDir, name)
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return err
@@ -141,7 +160,7 @@ func (c *client) showConversations() {
 }
 
 func (c *client) saveConversation(name string) error {
-	file := path.Join(conversationDir, name)
+	file := path.Join(conf.conversationDir, name)
 	conv, err := json.Marshal(c.history)
 	if err != nil {
 		return err
@@ -155,7 +174,7 @@ func (c *client) saveConversation(name string) error {
 
 func (c *client) listConversations() []string {
 	conversations := []string{}
-	files, err := os.ReadDir(conversationDir)
+	files, err := os.ReadDir(conf.conversationDir)
 	if err != nil {
 		log.Printf("error getting personas: %s", err.Error())
 	}
@@ -167,7 +186,7 @@ func (c *client) listConversations() []string {
 
 func (c *client) loadConversation(name string) error {
 
-	file := path.Join(conversationDir, name)
+	file := path.Join(conf.conversationDir, name)
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return err
