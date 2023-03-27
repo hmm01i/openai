@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -13,20 +14,13 @@ import (
 )
 
 var (
-	configDir   = "openai"
-	personasDir = path.Join(configDir, "personas")
+	configDir       = "openai"
+	personasDir     string
+	conversationDir string
 )
 
 func main() {
-	home, _ := os.UserHomeDir()
-	configDir = path.Join(home, ".openai")
-	personasDir = path.Join(configDir, "personas")
-	if _, err := os.ReadDir(configDir); err != nil {
-		os.Mkdir(configDir, 0755)
-	}
-	if _, err := os.ReadDir(personasDir); err != nil {
-		os.Mkdir(personasDir, 0755)
-	}
+	initConfigs()
 	token := os.Getenv("OPENAI_API_TOKEN")
 	c := NewClient(
 		client{
@@ -36,8 +30,22 @@ func main() {
 	interactive(c)
 }
 
+func initConfigs() {
+
+	home, _ := os.UserHomeDir()
+	configDir = path.Join(home, ".openai")
+	personasDir = path.Join(configDir, "personas")
+	conversationDir = path.Join(configDir, "conversations")
+	for _, i := range []string{configDir, personasDir, conversationDir} {
+		if _, err := os.ReadDir(i); err != nil {
+			os.Mkdir(configDir, 0755)
+		}
+	}
+}
+
 type client struct {
 	model           string
+	persona         string
 	client          *openai.Client
 	systemDirective string
 	history         []openai.ChatCompletionMessage
@@ -63,15 +71,24 @@ func (c *client) listPersonas() []string {
 	for _, f := range files {
 		personas = append(personas, f.Name())
 	}
+
+	for _, p := range personas {
+		if p == c.persona {
+			fmt.Println(p + "*")
+		} else {
+			fmt.Println(p)
+		}
+	}
 	return personas
 }
 
 func (c *client) savePersona(name, directive string) error {
 	file := path.Join(personasDir, name)
-	err := os.WriteFile(file, []byte(directive), 666)
+	err := os.WriteFile(file, []byte(directive), 0644)
 	if err != nil {
 		return err
 	}
+	c.persona = name
 	return nil
 }
 
@@ -88,6 +105,7 @@ func (c *client) loadPersona(name string) error {
 	}
 
 	c.history[0].Content = string(b)
+	c.persona = name
 	return nil
 }
 
@@ -116,12 +134,49 @@ func (c *client) setDirective(directive string) error {
 	return nil
 }
 
-func (c *client) showHistory() {
+func (c *client) showConversations() {
 	for _, m := range c.history {
 		fmt.Printf("%s: %s\n", m.Role, m.Content)
 	}
 }
 
+func (c *client) saveConversation(name string) error {
+	file := path.Join(conversationDir, name)
+	conv, err := json.Marshal(c.history)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(file, conv, 0644); err != nil {
+		return err
+	}
+	c.persona = name
+	return nil
+}
+
+func (c *client) listConversations() []string {
+	conversations := []string{}
+	files, err := os.ReadDir(conversationDir)
+	if err != nil {
+		log.Printf("error getting personas: %s", err.Error())
+	}
+	for _, f := range files {
+		conversations = append(conversations, f.Name())
+	}
+	return conversations
+}
+
+func (c *client) loadConversation(name string) error {
+
+	file := path.Join(conversationDir, name)
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	c.history[0].Content = string(b)
+	c.persona = name
+	return nil
+}
 func (c *client) clearHistory() {
 	c.history = []openai.ChatCompletionMessage{{Role: "system", Content: c.systemDirective}}
 }
@@ -135,7 +190,12 @@ func (c *client) listModels() {
 		fmt.Println(m.ID)
 	}
 }
+
 func interactive(c *client) {
+	fmt.Printf(`Welcome to Chat with OpenAI
+Model: %s
+Persona: %s
+`, c.model, c.persona)
 	prompt := fmt.Sprintf("%d > ", len(c.history))
 	rl, err := readline.New(prompt)
 	if err != nil {
