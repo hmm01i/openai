@@ -14,17 +14,15 @@ import (
 
 func NewChatClient(c chatClient, token string) *chatClient {
 
-	newClient := &chatClient{
-		model:  c.model,
-		client: openai.NewClient(token),
-		history: []openai.ChatCompletionMessage{
-			{Role: "system",
-				Content: c.systemDirective,
-			},
-		},
+	c.client = openai.NewClient(token)
+	c.history = []openai.ChatCompletionMessage{
+		{Role: "system",
+			Content: c.systemDirective,
+		}}
+	if c.persona != "" {
+		c.loadPersona(c.persona)
 	}
-	newClient.loadPersona(c.persona)
-	return newClient
+	return &c
 }
 
 func (c *chatClient) listPersonas() []string {
