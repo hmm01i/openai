@@ -8,6 +8,7 @@ var (
 	chatC   *chatClient
 	persona string
 )
+
 var chatCmd = &cobra.Command{
 	Use:   "chat",
 	Short: "Start a interactive chat session",
