@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func (c *client) command(input string) (string, bool) {
+func (c *chatClient) command(input string) (string, bool) {
 	if !strings.HasPrefix(input, "/") {
 		return "", false
 	}
@@ -25,7 +25,7 @@ func (c *client) command(input string) (string, bool) {
 
 	case "/listcmd":
 		commands := []string{}
-		return func(c *client, args []string) string {
+		return func(c *chatClient, args []string) string {
 			for o, _ := range cmds {
 				commands = append(commands, o)
 			}
@@ -35,8 +35,8 @@ func (c *client) command(input string) (string, bool) {
 	return "Unrecognized command", true
 }
 
-var cmds = map[string]func(c *client, args []string) string{
-	"/listper": func(c *client, args []string) string {
+var cmds = map[string]func(c *chatClient, args []string) string{
+	"/listper": func(c *chatClient, args []string) string {
 		personas := c.listPersonas()
 		for i, p := range personas {
 			if p == c.persona {
@@ -45,9 +45,9 @@ var cmds = map[string]func(c *client, args []string) string{
 		}
 		return strings.Join(personas, "\n")
 	},
-	"/saveper": func(c *client, args []string) string { c.savePersona(args[0], c.systemDirective); return "ok" },
-	"/showper": func(c *client, args []string) string { persona := c.showPersona(); return persona },
-	"/loadper": func(c *client, args []string) string {
+	"/saveper": func(c *chatClient, args []string) string { c.savePersona(args[0], c.systemDirective); return "ok" },
+	"/showper": func(c *chatClient, args []string) string { persona := c.showPersona(); return persona },
+	"/loadper": func(c *chatClient, args []string) string {
 		if len(args) < 1 {
 			return `ERR: No persona provided. Usage: /loadper <persona>`
 		}
@@ -56,26 +56,26 @@ var cmds = map[string]func(c *client, args []string) string{
 		}
 		return "ok"
 	},
-	"/setdir": func(c *client, args []string) string {
+	"/setdir": func(c *chatClient, args []string) string {
 		if err := c.setDirective(strings.Trim(strings.Join(args, " "), `"`)); err != nil {
 			return "failed to set directive"
 		}
 		return "ok"
 	},
-	"/hist": func(c *client, args []string) string {
+	"/hist": func(c *chatClient, args []string) string {
 		var hist []string
 		for _, m := range c.history {
 			hist = append(hist, fmt.Sprintf("%s: %s\n", m.Role, m.Content))
 		}
 		return strings.Join(hist, "\n")
 	},
-	"/clearhist": func(c *client, args []string) string { c.clearHistory(); return "ok" },
-	"/listmod":   func(c *client, args []string) string { mod := c.listModels(); return strings.Join(mod, "\n") },
-	"/q":         func(c *client, args []string) string { os.Exit(0); return "ok" },
-	"/saveconv":  func(c *client, args []string) string { c.saveConversation(args[0]); return "ok" },
-	"/listconv": func(c *client, args []string) string {
+	"/clearhist": func(c *chatClient, args []string) string { c.clearHistory(); return "ok" },
+	"/listmod":   func(c *chatClient, args []string) string { mod := c.listModels(); return strings.Join(mod, "\n") },
+	"/q":         func(c *chatClient, args []string) string { os.Exit(0); return "ok" },
+	"/saveconv":  func(c *chatClient, args []string) string { c.saveConversation(args[0]); return "ok" },
+	"/listconv": func(c *chatClient, args []string) string {
 		convos := c.listConversations()
 		return strings.Join(convos, "\n")
 	},
-	"/loadconv": func(c *client, args []string) string { c.loadConversation(args[0]); return "ok" },
+	"/loadconv": func(c *chatClient, args []string) string { c.loadConversation(args[0]); return "ok" },
 }

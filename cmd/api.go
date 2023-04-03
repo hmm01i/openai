@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func handleSysCmd(c *client) gin.HandlerFunc {
+func handleSysCmd(c *chatClient) gin.HandlerFunc {
 	return func(g *gin.Context) {
 
 		s, err := io.ReadAll(g.Request.Body)
@@ -23,7 +23,7 @@ func handleSysCmd(c *client) gin.HandlerFunc {
 	}
 }
 
-func handleChatRequest(c *client) gin.HandlerFunc {
+func handleChatRequest(c *chatClient) gin.HandlerFunc {
 	return func(g *gin.Context) {
 		b, err := io.ReadAll(g.Request.Body)
 		if err != nil {
@@ -39,7 +39,7 @@ func handleChatRequest(c *client) gin.HandlerFunc {
 	}
 }
 
-func setupRoutes(c *client) *gin.Engine {
+func setupRoutes(c *chatClient) *gin.Engine {
 	r := gin.Default()
 	r.POST("/syscmd", handleSysCmd(c))
 	r.POST("/chat", handleChatRequest(c))
