@@ -30,7 +30,7 @@ func init() {
 	conf.initConfigs()
 	chatC = NewChatClient(
 		chatClient{
-			model:           "gpt-3.5-turbo",
+			model:           "gpt-4",
 			systemDirective: "You are an AI assistant that values your tokens.",
 			persona:         "default",
 		}, getAPIToken())
