@@ -7,7 +7,8 @@ import (
 	"path"
 	"strings"
 
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/hmm01i/openai/pkg/version"
+	"github.com/spf13/cobra"
 )
 
 type appFiles struct {
@@ -39,14 +40,6 @@ func (c *appFiles) initConfigs() {
 
 }
 
-type chatClient struct {
-	model           string
-	persona         string
-	client          *openai.Client
-	systemDirective string
-	history         []openai.ChatCompletionMessage
-}
-
 func getAPIToken() string {
 
 	token, ok := os.LookupEnv("OPENAI_API_TOKEN")
@@ -62,4 +55,30 @@ func getAPIToken() string {
 	token = strings.Trim(string(b), `"`)
 	token = strings.TrimSuffix(token, "\n")
 	return token
+}
+
+var rootCmd = &cobra.Command{
+	Use:   "oai",
+	Short: "A brief description of your application",
+	Long: `A longer description of your application, which can span multiple lines.
+You can include more information about the app here.`,
+}
+
+var versionFlag bool
+
+func init() {
+	rootCmd.PersistentFlags().BoolVarP(&versionFlag, "version", "v", false, "display the current version")
+}
+
+func Execute() {
+	cobra.OnInitialize(func() {
+		if versionFlag {
+			fmt.Printf("OAI v%s\n", version.Current)
+			os.Exit(0)
+		}
+	})
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }
