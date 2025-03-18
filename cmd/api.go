@@ -10,16 +10,18 @@ import (
 
 func handleSysCmd(c *chatClient) gin.HandlerFunc {
 	return func(g *gin.Context) {
-
 		s, err := io.ReadAll(g.Request.Body)
 		if err != nil {
 			g.JSON(http.StatusInternalServerError, err.Error())
-		}
-		if resp, ok := c.command(string(s)); ok {
-			g.JSON(http.StatusOK, strings.Split(resp, "\n"))
 			return
 		}
-		g.JSON(http.StatusBadRequest, []byte("bad request"))
+
+		resp := c.cmdRegistry.ExecuteCommand(c, string(s))
+		if resp == "" {
+			g.JSON(http.StatusBadRequest, "bad request")
+			return
+		}
+		g.JSON(http.StatusOK, strings.Split(resp, "\n"))
 	}
 }
 

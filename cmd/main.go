@@ -22,63 +22,77 @@ type appFiles struct {
 var conf appFiles
 
 func main() {
-	Execute()
+	if err := Execute(); err != nil {
+		log.Fatalf("Error executing command: %v", err)
+	}
 }
 
-func (c *appFiles) initConfigs() {
+func (c *appFiles) initConfigs() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home directory: %w", err)
+	}
 
-	home, _ := os.UserHomeDir()
 	c.configDir = path.Join(home, ".openai")
 	c.personasDir = path.Join(c.configDir, "personas")
 	c.conversationDir = path.Join(c.configDir, "conversations")
 	c.apiTokenFile = path.Join(c.configDir, "token")
-	for _, i := range []string{c.configDir, c.personasDir, c.conversationDir} {
-		if _, err := os.ReadDir(i); err != nil {
-			os.MkdirAll(i, 0755)
+
+	// Create directories with more restrictive permissions
+	for _, dir := range []string{c.configDir, c.personasDir, c.conversationDir} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
-
+	return nil
 }
 
 func getAPIToken() string {
-
-	token, ok := os.LookupEnv("OPENAI_API_TOKEN")
-	if ok {
-		fmt.Println("Loaded token from env OPENAI_AI_TOKEN")
+	// Try environment variable first
+	if token := os.Getenv("OPENAI_API_TOKEN"); token != "" {
+		log.Println("Using API token from OPENAI_API_TOKEN environment variable")
 		return token
 	}
 
+	// Try token file
 	b, err := os.ReadFile(conf.apiTokenFile)
 	if err != nil {
 		log.Fatalln("Unable to load token")
 	}
-	token = strings.Trim(string(b), `"`)
-	token = strings.TrimSuffix(token, "\n")
+
+	token := strings.TrimSpace(string(b))
+	if token == "" {
+		log.Fatalln("Token file is empty")
+	}
+
 	return token
 }
 
 var rootCmd = &cobra.Command{
 	Use:   "oai",
-	Short: "A brief description of your application",
-	Long: `A longer description of your application, which can span multiple lines.
-You can include more information about the app here.`,
+	Short: "OpenAI CLI client",
+	Long: `A command-line interface for interacting with OpenAI services.
+Supports managing conversations, personas, and various AI interactions.`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if err := conf.initConfigs(); err != nil {
+			return err
+		}
+		return nil
+	},
 }
 
-var versionFlag bool
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version number",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("OAI v%s\n", version.Current)
+	},
+}
 
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&versionFlag, "version", "v", false, "display the current version")
+	rootCmd.AddCommand(versionCmd)
 }
 
-func Execute() {
-	cobra.OnInitialize(func() {
-		if versionFlag {
-			fmt.Printf("OAI v%s\n", version.Current)
-			os.Exit(0)
-		}
-	})
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+func Execute() error {
+	return rootCmd.Execute()
 }

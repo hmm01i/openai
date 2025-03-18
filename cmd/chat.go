@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/chzyer/readline"
+	"github.com/hmm01i/openai/pkg/commands"
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"
 )
@@ -20,6 +21,7 @@ type chatClient struct {
 	client          *openai.Client
 	systemDirective string
 	history         []openai.ChatCompletionMessage
+	cmdRegistry     *commands.CommandRegistry
 }
 
 var (
@@ -55,8 +57,8 @@ func init() {
 	chatCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(chatCmd)
 }
-func NewChatClient(c chatClient, token string) *chatClient {
 
+func NewChatClient(c chatClient, token string) *chatClient {
 	c.client = openai.NewClient(token)
 	c.history = []openai.ChatCompletionMessage{
 		{Role: "system",
@@ -65,6 +67,9 @@ func NewChatClient(c chatClient, token string) *chatClient {
 	if c.persona != "" {
 		c.loadPersona(c.persona)
 	}
+
+	// Initialize command registry with beta access for testing
+	c.cmdRegistry = commands.NewCommandRegistry(commands.AccessBeta)
 	return &c
 }
 
@@ -124,7 +129,6 @@ func (c *chatClient) chatRequest(input string) (string, error) {
 	}
 	c.history = append(c.history, response.Choices[0].Message)
 	return response.Choices[0].Message.Content, nil
-
 }
 
 func (c *chatClient) setDirective(directive string) error {
@@ -165,7 +169,6 @@ func (c *chatClient) listConversations() []string {
 }
 
 func (c *chatClient) loadConversation(name string) error {
-
 	file := path.Join(conf.conversationDir, name)
 	b, err := os.ReadFile(file)
 	if err != nil {
@@ -176,6 +179,7 @@ func (c *chatClient) loadConversation(name string) error {
 	c.persona = name
 	return nil
 }
+
 func (c *chatClient) clearHistory() {
 	c.history = []openai.ChatCompletionMessage{{Role: "system", Content: c.systemDirective}}
 }
@@ -210,98 +214,95 @@ Persona: %s
 		if err != nil { // io.EOF
 			break
 		}
-		if resp, ok := c.command(line); ok {
-			fmt.Println(resp)
+
+		if strings.HasPrefix(line, "/") {
+			resp := c.cmdRegistry.ExecuteCommand(c, line)
+			if resp == "" {
+				continue
+			}
+
+			var cmdResp commands.CommandResponse
+			if err := json.Unmarshal([]byte(resp), &cmdResp); err != nil {
+				fmt.Println("Error:", err)
+				continue
+			}
+
+			if !cmdResp.Success {
+				fmt.Printf("\033[31mError: %s\033[0m\n", cmdResp.Error)
+				continue
+			}
+
+			fmt.Println(cmdResp.Message)
+			if line == "/q" {
+				os.Exit(0)
+			}
 			continue
 		}
-		r, err := c.chatRequest(line)
 
+		r, err := c.chatRequest(line)
 		if err != nil {
 			log.Println(err.Error())
-
 		}
 		fmt.Println(r)
 	}
 }
 
-func (c *chatClient) command(input string) (string, bool) {
-	if !strings.HasPrefix(input, "/") {
-		return "", false
-	}
-	inputSlice := strings.Split(input, " ")
-	var cmd string
-	var args []string
-	cmd = inputSlice[0]
-	if len(inputSlice) > 1 {
-		args = inputSlice[1:]
-	}
-
-	if _, ok := cmds[cmd]; ok {
-		return cmds[cmd](c, args), true
-	}
-	switch cmd {
-
-	case "/listcmd":
-		commands := []string{}
-		return func(c *chatClient, args []string) string {
-			for o, _ := range cmds {
-				commands = append(commands, o)
-			}
-			return strings.Join(commands, "\n")
-		}(c, args), true
-	}
-	return "Unrecognized command (try /listcmd)", true
+// Remove old command-related code
+func (c *chatClient) ListPersonas() []string {
+	return c.listPersonas()
 }
 
-var cmds = map[string]func(c *chatClient, args []string) string{
-	//Personas
-	"/listper": func(c *chatClient, args []string) string {
-		personas := c.listPersonas()
-		for i, p := range personas {
-			if p == c.persona {
-				personas[i] = p + "*"
-			}
-		}
-		return strings.Join(personas, "\n")
-	},
-	"/saveper": func(c *chatClient, args []string) string { c.savePersona(args[0], c.systemDirective); return "ok" },
-	"/showper": func(c *chatClient, args []string) string { persona := c.showPersona(); return persona },
-	"/loadper": func(c *chatClient, args []string) string {
-		if len(args) < 1 {
-			return `ERR: No persona provided. Usage: /loadper <persona>`
-		}
-		if err := c.loadPersona(args[0]); err != nil {
-			return "failed to load persona"
-		}
-		return "ok"
-	},
-	// system directive
-	"/setdir": func(c *chatClient, args []string) string {
-		if err := c.setDirective(strings.Trim(strings.Join(args, " "), `"`)); err != nil {
-			return "failed to set directive"
-		}
-		return "ok"
-	},
-	// conversation history
-	"/hist": func(c *chatClient, args []string) string {
-		var hist []string
-		for _, m := range c.history {
-			hist = append(hist, fmt.Sprintf("%s: %s\n", m.Role, m.Content))
-		}
-		return strings.Join(hist, "\n")
-	},
-	"/clearhist": func(c *chatClient, args []string) string { c.clearHistory(); return "ok" },
-	// models
-	"/listmod": func(c *chatClient, args []string) string { mod := c.listModels(); return strings.Join(mod, "\n") },
-	"/setmod":  func(c *chatClient, args []string) string { c.model = args[0]; return "model set" },
-	// conversations
-	"/saveconv": func(c *chatClient, args []string) string { c.saveConversation(args[0]); return "ok" },
-	"/listconv": func(c *chatClient, args []string) string {
-		convos := c.listConversations()
-		return strings.Join(convos, "\n")
-	},
-	"/loadconv": func(c *chatClient, args []string) string { c.loadConversation(args[0]); return "ok" },
+func (c *chatClient) SavePersona(name, directive string) error {
+	return c.savePersona(name, directive)
+}
 
-	// quit
-	"/q": func(c *chatClient, args []string) string { os.Exit(0); return "ok" },
+func (c *chatClient) ShowPersona() string {
+	return c.showPersona()
+}
+
+func (c *chatClient) LoadPersona(name string) error {
+	return c.loadPersona(name)
+}
+
+func (c *chatClient) SetDirective(directive string) error {
+	return c.setDirective(directive)
+}
+
+func (c *chatClient) ClearHistory() {
+	c.clearHistory()
+}
+
+func (c *chatClient) ListModels() []string {
+	return c.listModels()
+}
+
+func (c *chatClient) SetModel(model string) {
+	c.model = model
+}
+
+func (c *chatClient) SaveConversation(name string) error {
+	return c.saveConversation(name)
+}
+
+func (c *chatClient) ListConversations() []string {
+	return c.listConversations()
+}
+
+func (c *chatClient) LoadConversation(name string) error {
+	return c.loadConversation(name)
+}
+
+func (c *chatClient) GetCurrentPersona() string {
+	return c.persona
+}
+
+func (c *chatClient) GetHistory() []commands.Message {
+	messages := make([]commands.Message, len(c.history))
+	for i, msg := range c.history {
+		messages[i] = commands.Message{
+			Role:    msg.Role,
+			Content: msg.Content,
+		}
+	}
+	return messages
 }
